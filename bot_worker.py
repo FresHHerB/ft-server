@@ -1,4 +1,4 @@
-# bot_worker.py
+# bot_worker.py - Enhanced Logging Version
 import logging
 import time
 import random
@@ -18,13 +18,68 @@ logging.basicConfig(
 )
 log = logging.getLogger("bot-worker")
 
+def analyze_and_log_sectors(soup: BeautifulSoup) -> bool:
+    """
+    Analisa todos os setores e mostra o status completo com logging melhorado
+    Retorna True se o setor alvo estiver disponível
+    """
+    all_sector_elements = soup.find_all(class_="sector")
+    
+    if not all_sector_elements:
+        log.warning("⚠️ Nenhum setor encontrado na página!")
+        return False
+    
+    log.info("  📊 [STATUS ATUAL DOS SETORES]")
+    
+    target_found_and_available = False
+    available_sectors = []
+    unavailable_sectors = []
+    
+    # Primeiro, organiza todos os setores
+    for sector_element in all_sector_elements:
+        sector_slug = sector_element.get('id', 'desconhecido')
+        is_disabled = 'disabled' in sector_element.get('class', [])
+        status = "Indisponível" if is_disabled else "DISPONÍVEL"
+        
+        if sector_slug == TARGET_SECTOR_SLUG:
+            # Setor alvo - sempre mostra primeiro
+            icon = "🎯" if not is_disabled else "❌"
+            log.info(f"  {icon} Setor '{sector_slug.upper()}': {status} <--- ALVO")
+            if not is_disabled:
+                target_found_and_available = True
+        else:
+            # Outros setores - separa por status
+            if is_disabled:
+                unavailable_sectors.append(sector_slug)
+            else:
+                available_sectors.append(sector_slug)
+    
+    # Mostra setores disponíveis (além do alvo)
+    if available_sectors:
+        for sector in sorted(available_sectors):
+            log.info(f"  ✅ Setor '{sector.upper()}': DISPONÍVEL")
+    
+    # Mostra setores indisponíveis (exceto o alvo que já foi mostrado)
+    if unavailable_sectors:
+        for sector in sorted(unavailable_sectors):
+            log.info(f"  ❌ Setor '{sector.upper()}': Indisponível")
+    
+    # Resumo final
+    total_sectors = len(all_sector_elements)
+    available_count = len(available_sectors) + (1 if target_found_and_available else 0)
+    unavailable_count = total_sectors - available_count
+    
+    log.info(f"  📈 Resumo: {available_count}/{total_sectors} setores disponíveis")
+    
+    return target_found_and_available
+
 def watch_and_attack(session_cookies: dict) -> bool:
     log.info("▶️ FASE 2: Iniciando Vigilância do Setor via API (httpx)")
     target_sector_url = f"{BASE_URL}/jogos/{JOGO_SLUG}/setor/{TARGET_SECTOR_SLUG}/"
 
     with httpx.Client(cookies=session_cookies, headers=HEADERS, timeout=30.0, follow_redirects=True) as s:
         for attempt in range(1, MAX_WATCH_ATTEMPTS + 1):
-            log.info(f"--- Vigilância #{attempt}/{MAX_WATCH_ATTEMPTS} ---")
+            log.info(f"🔍 --- Vigilância #{attempt}/{MAX_WATCH_ATTEMPTS} ---")
             try:
                 s.headers['Referer'] = CATEGORIA_URL
                 response = s.get(SETORES_URL)
@@ -35,18 +90,14 @@ def watch_and_attack(session_cookies: dict) -> bool:
                     return False
 
                 soup = BeautifulSoup(response.text, "html.parser")
-                all_sector_elements = soup.find_all(class_="sector")
                 
-                target_found_and_available = False
-                for sector_element in all_sector_elements:
-                    sector_slug = sector_element.get('id', '')
-                    if sector_slug == TARGET_SECTOR_SLUG:
-                        if 'disabled' not in sector_element.get('class', []):
-                            target_found_and_available = True
-                        break
+                # Usa a nova função de análise melhorada
+                target_available = analyze_and_log_sectors(soup)
                 
-                if target_found_and_available:
-                    log.info(f"✅ DETECTADO! Setor '{TARGET_SECTOR_SLUG.upper()}' está disponível! Iniciando ataque...")
+                if target_available:
+                    log.info(f"🚨 DETECTADO! Setor '{TARGET_SECTOR_SLUG.upper()}' está disponível! Iniciando ataque...")
+                    
+                    # Executa o ataque
                     s.headers['Referer'] = SETORES_URL
                     final_get_response = s.get(target_sector_url)
                     final_get_response.raise_for_status()
@@ -63,10 +114,12 @@ def watch_and_attack(session_cookies: dict) -> bool:
                         log.error("❌ ATAQUE FALHOU! Oportunidade perdida.")
                         return True
                 else:
-                    log.info(f"Setor '{TARGET_SECTOR_SLUG.upper()}' ainda indisponível.")
+                    # Calcula próximo intervalo
+                    next_interval = random.uniform(WATCH_INTERVAL_MIN, WATCH_INTERVAL_MAX)
+                    log.info(f"⏳ Aguardando {next_interval:.2f} segundos...")
 
             except Exception as e:
-                log.exception(f"Erro inesperado durante a vigilância:")
+                log.exception(f"💥 Erro inesperado durante a vigilância:")
 
             time.sleep(random.uniform(WATCH_INTERVAL_MIN, WATCH_INTERVAL_MAX))
         
@@ -74,13 +127,23 @@ def watch_and_attack(session_cookies: dict) -> bool:
     return False
 
 if __name__ == "__main__":
+    log.info("🚀 Bot Worker iniciado!")
+    log.info(f"🎯 Setor alvo: {TARGET_SECTOR_SLUG.upper()}")
+    log.info(f"🎮 Jogo: {JOGO_SLUG}")
+    log.info(f"👤 Dependente ID: {DEPENDENTE_ID}")
+    log.info(f"🔄 Máximo de tentativas: {MAX_WATCH_ATTEMPTS}")
+    log.info(f"⏱️ Intervalo: {WATCH_INTERVAL_MIN}s - {WATCH_INTERVAL_MAX}s")
+    log.info("=" * 60)
+    
     while True:
+        log.info("🔑 Obtendo sessão autenticada...")
         cookies = get_authenticated_session()
         if cookies:
+            log.info("✅ Sessão obtida com sucesso!")
             completed = watch_and_attack(cookies)
             if completed:
-                log.info("Processo concluído. Encerrando o worker.")
+                log.info("🏁 Processo concluído. Encerrando o worker.")
                 break
         else:
-            log.error("Falha ao obter sessão. Tentando novamente em 5 minutos...")
+            log.error("❌ Falha ao obter sessão. Tentando novamente em 5 minutos...")
             time.sleep(300)
