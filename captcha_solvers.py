@@ -1,4 +1,4 @@
-# captcha_solvers.py
+# captcha_solvers.py - Versão corrigida para o servidor
 import logging
 import time
 import requests
@@ -61,10 +61,77 @@ def solve_with_2captcha(page: Page) -> str:
             if result.get('status') == 'ready':
                 g_response = result['solution']['gRecaptchaResponse']
                 log.info(f"     🔑 Solução 2Captcha recebida: {g_response[:20]}...")
-                page.evaluate(f"document.getElementById('g-recaptcha-response').innerHTML = '{g_response}';")
+                
+                # INJEÇÃO ROBUSTA DO TOKEN COM AGUARDO
+                log.info("     💉 Injetando token e aguardando iframe desaparecer...")
+                
+                # 1. Injeta o token
+                page.evaluate(f"""
+                    const textarea = document.getElementById('g-recaptcha-response');
+                    if (textarea) {{
+                        textarea.innerHTML = '{g_response}';
+                        textarea.value = '{g_response}';
+                        textarea.style.display = 'block';
+                        
+                        // Dispara eventos
+                        textarea.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                        textarea.dispatchEvent(new Event('change', {{ bubbles: true }}));
+                        
+                        console.log('Token 2Captcha injetado');
+                    }}
+                """)
+                
+                # 2. Aguarda um pouco para o reCAPTCHA processar
+                time.sleep(3)
+                
+                # 3. AGUARDA O IFRAME DO CHALLENGE DESAPARECER
+                log.info("     ⏳ Aguardando iframe challenge desaparecer...")
+                try:
+                    # Aguarda até 20 segundos para o iframe desaparecer ou ficar invisível
+                    page.wait_for_function("""
+                        () => {
+                            const iframe = document.querySelector('iframe[src*="api2/bframe"]');
+                            return !iframe || 
+                                   iframe.style.display === 'none' || 
+                                   iframe.offsetWidth === 0 || 
+                                   iframe.offsetHeight === 0 ||
+                                   !iframe.offsetParent;
+                        }
+                    """, timeout=20000)
+                    log.info("     ✅ Iframe challenge removido/ocultado")
+                except Exception as e:
+                    log.warning(f"     ⚠️ Iframe ainda presente após timeout: {e}")
+                    # Tenta forçar a remoção/ocultação do iframe
+                    log.info("     🔧 Tentando forçar remoção do iframe...")
+                    page.evaluate("""
+                        const iframe = document.querySelector('iframe[src*="api2/bframe"]');
+                        if (iframe) {
+                            iframe.style.display = 'none';
+                            iframe.style.visibility = 'hidden';
+                            iframe.style.opacity = '0';
+                            iframe.style.pointerEvents = 'none';
+                            iframe.style.position = 'absolute';
+                            iframe.style.left = '-9999px';
+                            iframe.remove();
+                        }
+                    """)
+                
+                # 4. Aguarda mais um pouco para garantir
+                time.sleep(2)
+                
+                # 5. Verifica se o botão submit está clicável
+                try:
+                    submit_button = page.locator('button[type="submit"]')
+                    submit_button.wait_for(state="visible", timeout=5000)
+                    log.info("     ✅ Botão submit está visível e pronto")
+                except:
+                    log.warning("     ⚠️ Botão submit pode não estar totalmente pronto")
+                
                 return "SUCCESS"
+                
             elif result.get('status') != 'processing':
                 raise RuntimeError(f"2Captcha retornou um erro: {result.get('errorDescription')}")
+        
         raise TimeoutError("Timeout esperando a solução do 2Captcha.")
     except Exception as e:
         log.error(f"     ❌ Falha crítica ao usar 2Captcha: {e}")
