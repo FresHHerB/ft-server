@@ -1,4 +1,4 @@
-# main_app.py (v1.4 - Log Persistente)
+# main_app.py (v1.5 - WebSocket Fixes)
 import os
 import subprocess
 import logging
@@ -6,7 +6,7 @@ import sys
 import traceback
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
 from flask_socketio import SocketIO, emit
-from threading import Lock
+from threading import Lock, Thread
 import time
 from datetime import datetime
 
@@ -99,17 +99,17 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "fallback-secret-key-for-developm
 log.info(f"🔑 Flask secret key configurada")
 
 try:
-    socketio = SocketIO(app, async_mode='eventlet')
+    socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
     log.info("✅ SocketIO inicializado com eventlet")
 except Exception as e:
     log.error(f"❌ Erro ao inicializar SocketIO: {e}")
     sys.exit(1)
 
 bot_process = None
-thread = None
+monitor_thread = None
 thread_lock = Lock()
 
-# --- Health Check Simples ---
+# --- Health Check ---
 @app.route('/health')
 def health_check():
     """Endpoint de health check simplificado"""
@@ -132,10 +132,10 @@ def get_logs():
     except Exception as e:
         return jsonify(error=str(e)), 500
 
-# --- Teste de Debug ---
+# --- Debug ---
 @app.route('/debug')
 def debug_info():
-    """Endpoint para debug de informações do sistema"""
+    """Endpoint para debug"""
     try:
         info = {
             "python_version": sys.version,
@@ -150,6 +150,7 @@ def debug_info():
                 "templates/login.html": os.path.exists("templates/login.html"),
                 "templates/dashboard.html": os.path.exists("templates/dashboard.html"),
                 "static/style.css": os.path.exists("static/style.css"),
+                "static/app.js": os.path.exists("static/app.js"),
                 "log_file": os.path.exists(LOG_FILE),
             },
             "log_info": {
@@ -162,15 +163,13 @@ def debug_info():
     except Exception as e:
         return {"error": str(e), "traceback": traceback.format_exc()}, 500
 
-# --- Autenticação Simplificada ---
+# --- Autenticação ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     try:
-        log.info("🔓 Acessando rota de login...")
         if request.method == 'POST':
             username = request.form.get('username')
             password = request.form.get('password')
-            log.info(f"📝 Tentativa de login: {username}")
             
             if username == ADMIN_USER and password == ADMIN_PASSWORD:
                 session['logged_in'] = True
@@ -180,39 +179,32 @@ def login():
                 log.warning(f"❌ Login falhou para: {username}")
                 return "Credenciais inválidas", 401
         
-        log.info("📄 Renderizando página de login...")
         return render_template('login.html')
     except Exception as e:
         log.error(f"❌ Erro na rota login: {e}")
-        traceback.print_exc()
         return f"Erro interno: {str(e)}", 500
 
 @app.route('/logout')
 def logout():
     session.pop('logged_in', None)
-    log.info("👋 Usuário deslogado")
     return redirect(url_for('login'))
 
 # --- Dashboard ---
 @app.route('/')
 def dashboard():
     try:
-        log.info("🏠 Acessando dashboard...")
         if not session.get('logged_in'):
-            log.info("🔒 Usuário não logado, redirecionando...")
             return redirect(url_for('login'))
         
         config_values = dotenv_values(".env") or {}
         bot_status = "Rodando" if bot_process and bot_process.poll() is None else "Parado"
         
-        log.info("📄 Renderizando dashboard...")
         return render_template('dashboard.html', config=config_values, status=bot_status)
     except Exception as e:
         log.error(f"❌ Erro no dashboard: {e}")
-        traceback.print_exc()
         return f"Erro no dashboard: {str(e)}", 500
 
-# --- Configurações ---
+# --- Config ---
 @app.route('/save_config', methods=['POST'])
 def save_config():
     try:
@@ -220,28 +212,21 @@ def save_config():
             return jsonify(error="Não autorizado"), 403
         
         data = request.json
-        log.info(f"💾 Salvando configurações: {list(data.keys())}")
-        
-        # Lê o .env existente
         current_config = dotenv_values(".env") or {}
         
-        # Atualiza com os novos dados
         for key, value in data.items():
             if value:
                 current_config[key.upper()] = value
                 
-        # Salva no arquivo
         with open(".env", "w") as f:
             for key, value in current_config.items():
                 f.write(f"{key}={value}\n")
                 
-        log.info("✅ Configurações salvas")
         return jsonify(message="Configurações salvas com sucesso!")
     except Exception as e:
-        log.error(f"❌ Erro ao salvar config: {e}")
         return jsonify(error=str(e)), 500
 
-# --- Controle do Bot ---
+# --- Bot Control ---
 @app.route('/start_bot', methods=['POST'])
 def start_bot():
     global bot_process
@@ -252,16 +237,13 @@ def start_bot():
         if bot_process and bot_process.poll() is None:
             return jsonify(message="Bot já está rodando"), 400
         
-        # IMPORTANTE: NÃO remove o arquivo de log
         log_manager.rotate_log_if_needed()
         log_manager.append_session_separator()
         
-        log.info("🤖 Iniciando bot...")
         bot_process = subprocess.Popen(["python", "-u", "bot_worker.py"])
         log.info(f"✅ Bot iniciado com PID: {bot_process.pid}")
         return jsonify(message="Bot iniciado!", pid=bot_process.pid)
     except Exception as e:
-        log.error(f"❌ Erro ao iniciar bot: {e}")
         return jsonify(error=str(e)), 500
 
 @app.route('/stop_bot', methods=['POST'])
@@ -272,7 +254,6 @@ def stop_bot():
             return jsonify(error="Não autorizado"), 403
         
         if bot_process and bot_process.poll() is None:
-            log.info(f"⏹️ Parando bot PID: {bot_process.pid}")
             bot_process.terminate()
             bot_process.wait(timeout=5)
             bot_process = None
@@ -280,86 +261,72 @@ def stop_bot():
         
         return jsonify(message="Bot não estava rodando"), 400
     except Exception as e:
-        log.error(f"❌ Erro ao parar bot: {e}")
         return jsonify(error=str(e)), 500
 
-# --- Lógica de Streaming de Logs com WebSocket MELHORADA ---
-def tail_log_file():
-    """Lê as novas linhas do arquivo de log e as envia para o cliente."""
-    log.info("🔍 Iniciando thread de monitoramento de logs...")
-    
-    # Garante que o arquivo existe
-    log_manager.ensure_log_file_exists()
+# --- Thread de monitoramento de logs ---
+def monitor_log_file():
+    """Thread para monitorar arquivo de log"""
+    log.info("🔍 Iniciando monitoramento de logs...")
     
     last_position = 0
     
-    try:
-        with open(LOG_FILE, 'r', encoding='utf-8') as f:
-            # Vai para o final do arquivo
-            f.seek(0, 2)
-            last_position = f.tell()
-            
-            while True:
-                # Verifica se o processo do bot ainda está vivo
-                if bot_process is None or bot_process.poll() is not None:
-                    log.info("🔍 Bot não está mais rodando, mas mantendo monitoramento...")
-                    socketio.sleep(2)  # Verifica menos frequentemente
-                    continue
-                
-                # Verifica se há novos dados
-                current_position = f.tell()
-                if current_position < last_position:
-                    # Arquivo foi rotacionado ou truncado
-                    f.seek(0)
-                    last_position = 0
-                
-                line = f.readline()
-                if line:
-                    socketio.emit('new_log_line', {'line': line})
-                    last_position = f.tell()
-                else:
-                    socketio.sleep(0.1)
+    while True:
+        try:
+            if os.path.exists(LOG_FILE):
+                with open(LOG_FILE, 'r', encoding='utf-8') as f:
+                    f.seek(last_position)
+                    new_lines = f.read()
                     
-    except Exception as e:
-        log.error(f"❌ Erro na thread de logs: {e}")
+                    if new_lines:
+                        # Envia novas linhas via WebSocket
+                        socketio.emit('new_log_line', {'line': new_lines})
+                        last_position = f.tell()
+            
+            time.sleep(0.5)  # Check a cada 0.5 segundos
+            
+        except Exception as e:
+            log.error(f"❌ Erro no monitoramento: {e}")
+            time.sleep(2)
 
+# --- WebSocket Events (CORRIGIDOS) ---
 @socketio.on('connect')
-def handle_connect():
-    if not session.get('logged_in'):
-        return False
-        
-    log.info("🔌 Cliente conectado ao dashboard")
-    
-    # SEMPRE envia o log completo para qualquer cliente que se conecta
+def handle_connect(auth=None):  # CORREÇÃO: Aceita parâmetro auth
     try:
+        if not session.get('logged_in'):
+            return False
+            
+        log.info("🔌 Cliente conectado ao dashboard")
+        
+        # Envia log completo
         full_log_content = log_manager.get_full_log_content()
         emit('historical_logs', {
             'logs': full_log_content,
             'timestamp': time.time()
         })
-        log.info(f"📜 Enviado log completo ({len(full_log_content)} chars) para cliente")
+        
+        # Inicia thread de monitoramento se necessário
+        global monitor_thread
+        with thread_lock:
+            if monitor_thread is None or not monitor_thread.is_alive():
+                monitor_thread = Thread(target=monitor_log_file, daemon=True)
+                monitor_thread.start()
+                log.info("🧵 Thread de monitoramento iniciada")
+        
+        return True
+        
     except Exception as e:
-        log.error(f"❌ Erro ao enviar log histórico: {e}")
-        emit('historical_logs', {'logs': f"Erro ao carregar log: {str(e)}"})
-    
-    # Inicia thread de monitoramento se necessário
-    global thread
-    with thread_lock:
-        if thread is None or not thread.is_alive():
-            thread = socketio.start_background_task(target=tail_log_file)
-            log.info("🧵 Thread de monitoramento de logs iniciada")
+        log.error(f"❌ Erro no connect: {e}")
+        return False
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    log.info("🔌 Cliente desconectado do dashboard")
+    log.info("🔌 Cliente desconectado")
 
 # --- Error Handlers ---
 @app.errorhandler(Exception)
 def handle_exception(e):
     log.error(f"❌ Erro não tratado: {e}")
-    traceback.print_exc()
     return f"Erro interno: {str(e)}", 500
 
 if __name__ == '__main__':
-    log.info("🚀 Iniciando aplicação em modo debug...")
-    socketio.run(app, host='0.0.0.0', port=5001, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5001, debug=False)
