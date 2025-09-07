@@ -5,7 +5,7 @@ import time
 from typing import Dict, Optional
 
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
-from config import (LOGIN_URL, USERNAME, PASSWORD, CAPTCHA_SOLVE_TIMEOUT,
+from config import (LOGIN_URL, FT_USERNAME, FT_PASSWORD, CAPTCHA_SOLVE_TIMEOUT,
                     JOGOS_URL, CATEGORIA_URL, CATEGORIA_ID, SETORES_URL, HEADERS, JOGO_SLUG)
 from captcha_solvers import solve_with_openai, solve_with_2captcha
 
@@ -19,8 +19,8 @@ def get_authenticated_session() -> Optional[Dict[str, str]]:
         page = context.new_page()
         try:
             page.goto(LOGIN_URL, timeout=60000)
-            page.fill("input#id_username", USERNAME)
-            page.fill("input#id_password", PASSWORD)
+            page.fill("input#id_username", FT_USERNAME)
+            page.fill("input#id_password", FT_PASSWORD)
 
             login_successful = False
             for attempt in range(1, 3):
