@@ -9,3 +9,4 @@ playwright
 requests
 gunicorn
 eventlet
+# Comentário para quebrar o cache do Docker
