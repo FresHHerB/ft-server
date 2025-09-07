@@ -14,7 +14,7 @@ log = logging.getLogger(__name__)
 def get_authenticated_session() -> Optional[Dict[str, str]]:
     log.info("▶️ FASE 1: Iniciando Login e Aquecimento via Navegador")
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True)  # headless=True para produção
         context = browser.new_context(user_agent=HEADERS["user-agent"])
         page = context.new_page()
         try:
