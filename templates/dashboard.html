@@ -2,16 +2,16 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <title>Bot Dashboard - Log Persistente</title>
+    <title>Bot Dashboard</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🤖 Dashboard do Bot de Reserva</h1>
+            <h1>🤖 Dashboard do Bot</h1>
             <div>
-                <span id="connection-status">🔌 Conectando...</span>
+                <span id="status-indicator">🔄 Carregando...</span>
                 <a href="/logout">Sair</a>
             </div>
         </header>
@@ -19,123 +19,156 @@
         <div class="main-content">
             <div class="config-panel">
                 <h2>⚙️ Configurações</h2>
-                <form id="configForm">
-                    <label>Usuário FT:</label>
-                    <input type="text" id="ft_username" value="{{ config.FT_USERNAME or '' }}">
-                    
-                    <label>Senha FT:</label>
-                    <input type="password" id="ft_password" placeholder="Deixe em branco para não alterar">
-                    
-                    <label>Jogo Slug:</label>
-                    <input type="text" id="jogo_slug" value="{{ config.JOGO_SLUG or '' }}">
-                    
-                    <label>Setor Alvo:</label>
-                    <input type="text" id="target_sector_slug" value="{{ config.TARGET_SECTOR_SLUG or '' }}">
-                    
-                    <label>ID Dependente:</label>
-                    <input type="text" id="dependente_id" value="{{ config.DEPENDENTE_ID or '' }}">
-                    
-                    <label>OpenAI API Key:</label>
-                    <input type="password" id="openai_api_key" placeholder="Deixe em branco para não alterar">
-                    
-                    <label>2Captcha API Key:</label>
-                    <input type="password" id="twocaptcha_api_key" placeholder="Deixe em branco para não alterar">
-                    
-                    <button type="button" onclick="saveConfig()">💾 Salvar Configurações</button>
-                </form>
+                
+                <label>Usuário FT:</label>
+                <input type="text" id="ft_username" value="{{ config.FT_USERNAME or '' }}">
+                
+                <label>Senha FT:</label>
+                <input type="password" id="ft_password" placeholder="Deixe em branco para não alterar">
+                
+                <label>Jogo Slug:</label>
+                <input type="text" id="jogo_slug" value="{{ config.JOGO_SLUG or '' }}">
+                
+                <label>Setor Alvo:</label>
+                <input type="text" id="target_sector_slug" value="{{ config.TARGET_SECTOR_SLUG or '' }}">
+                
+                <label>ID Dependente:</label>
+                <input type="text" id="dependente_id" value="{{ config.DEPENDENTE_ID or '' }}">
+                
+                <label>OpenAI API Key:</label>
+                <input type="password" id="openai_api_key" placeholder="Deixe em branco para não alterar">
+                
+                <label>2Captcha API Key:</label>
+                <input type="password" id="twocaptcha_api_key" placeholder="Deixe em branco para não alterar">
+                
+                <button onclick="saveConfig()">💾 Salvar</button>
 
-                <hr style="margin: 20px 0;">
-
-                <h3>ℹ️ Informações</h3>
                 <div class="info-panel">
-                    <p><strong>Status do Bot:</strong> <span id="bot-status">{{ status }}</span></p>
+                    <h3>ℹ️ Status</h3>
+                    <p><strong>Bot:</strong> <span id="bot-status">{{ status }}</span></p>
                     <p><strong>Jogo:</strong> {{ config.JOGO_SLUG or 'Não configurado' }}</p>
-                    <p><strong>Setor Alvo:</strong> {{ config.TARGET_SECTOR_SLUG or 'Não configurado' }}</p>
-                    <p><strong>Max Tentativas:</strong> {{ config.MAX_WATCH_ATTEMPTS or '1800' }}</p>
+                    <p><strong>Setor:</strong> {{ config.TARGET_SECTOR_SLUG or 'Não configurado' }}</p>
                 </div>
             </div>
 
             <div class="control-panel">
-                <h2>🎮 Controle e Monitoramento</h2>
+                <h2>🎮 Controle</h2>
                 
-                <div class="control-buttons">
+                <div>
                     <button onclick="startBot()" class="btn-start">▶️ Iniciar Bot</button>
                     <button onclick="stopBot()" class="btn-stop">⏹️ Parar Bot</button>
                     <button onclick="downloadLogs()" class="btn-download">📥 Baixar Logs</button>
-                    <button onclick="window.location.reload()" class="btn-refresh">🔄 Atualizar</button>
+                    <button onclick="window.location.reload()">🔄 Atualizar</button>
                 </div>
 
-                <h3>📜 Logs em Tempo Real (Persistente)</h3>
-                <div class="log-info">
-                    <small>
-                        ✅ Logs persistem entre sessões, dispositivos e atualizações<br>
-                        🔄 Atualizações automáticas em tempo real<br>
-                        📱 Sincronizado em todos os dispositivos
-                    </small>
+                <h3>📜 Logs do Bot</h3>
+                <div style="font-size: 12px; color: #666; margin-bottom: 5px;">
+                    Logs persistentes • Atualização automática • <span id="log-info">Carregando...</span>
                 </div>
                 
-                <pre id="log-output" class="log-output">Carregando logs...</pre>
-                
-                <div class="log-controls">
-                    <small>
-                        <span id="log-stats">Aguardando conexão...</span>
-                    </small>
-                </div>
+                <pre id="log-output">Carregando logs...</pre>
             </div>
         </div>
     </div>
 
+    <!-- Socket.IO -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    
+    <!-- App Script -->
     <script src="{{ url_for('static', filename='app.js') }}"></script>
     
+    <!-- Fallback direto caso app.js não carregue -->
     <script>
-        // Atualiza status de conexão
-        document.addEventListener('DOMContentLoaded', function() {
-            const statusElement = document.getElementById('connection-status');
-            const logStatsElement = document.getElementById('log-stats');
+        // Fallback de emergência caso app.js não carregue
+        setTimeout(function() {
             const logOutput = document.getElementById('log-output');
+            const logInfo = document.getElementById('log-info');
+            const statusIndicator = document.getElementById('status-indicator');
             
-            // Monitor de conexão WebSocket
-            if (typeof io !== 'undefined') {
-                const socket = io();
+            if (logOutput && logOutput.textContent === 'Carregando logs...') {
+                console.log('🚨 Fallback ativado - app.js não carregou');
+                statusIndicator.textContent = '🔴 Modo degradado';
                 
-                socket.on('connect', () => {
-                    statusElement.textContent = '🟢 Conectado';
-                    statusElement.style.color = 'green';
-                });
+                // Função simples para carregar logs
+                function loadLogs() {
+                    fetch('/api/logs')
+                        .then(res => res.json())
+                        .then(data => {
+                            logOutput.textContent = data.logs || 'Nenhum log disponível';
+                            logInfo.textContent = `${data.file_size} chars • ${new Date().toLocaleTimeString()}`;
+                        })
+                        .catch(err => {
+                            logOutput.textContent = 'Erro ao carregar logs: ' + err.message;
+                            logInfo.textContent = 'Erro';
+                        });
+                }
                 
-                socket.on('disconnect', () => {
-                    statusElement.textContent = '🔴 Desconectado';
-                    statusElement.style.color = 'red';
-                });
+                // Carrega logs e recarrega a cada 5 segundos
+                loadLogs();
+                setInterval(loadLogs, 5000);
                 
-                socket.on('historical_logs', (data) => {
-                    const lineCount = data.logs.split('\n').length;
-                    logStatsElement.textContent = `📊 ${lineCount} linhas | ${data.logs.length} chars`;
-                });
+                // Funções básicas dos botões
+                window.startBot = function() {
+                    fetch('/start_bot', { method: 'POST' })
+                        .then(res => res.json())
+                        .then(data => {
+                            alert(data.message);
+                            document.getElementById('bot-status').textContent = 'Rodando';
+                            loadLogs();
+                        });
+                };
                 
-                socket.on('new_log_line', () => {
-                    const lineCount = logOutput.textContent.split('\n').length;
-                    const charCount = logOutput.textContent.length;
-                    logStatsElement.textContent = `📊 ${lineCount} linhas | ${charCount} chars | 🔴 AO VIVO`;
-                });
-            }
-            
-            // Auto-refresh status a cada minuto
-            setInterval(() => {
-                fetch('/api/logs')
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.logs) {
-                            const lineCount = data.logs.split('\n').length;
-                            logStatsElement.textContent = `📊 ${lineCount} linhas | ${data.file_size} chars | ⏰ ${new Date().toLocaleTimeString()}`;
-                        }
-                    })
-                    .catch(() => {
-                        logStatsElement.textContent = '❌ Erro ao atualizar estatísticas';
+                window.stopBot = function() {
+                    fetch('/stop_bot', { method: 'POST' })
+                        .then(res => res.json())
+                        .then(data => {
+                            alert(data.message);
+                            document.getElementById('bot-status').textContent = 'Parado';
+                            loadLogs();
+                        });
+                };
+                
+                window.saveConfig = function() {
+                    const data = {
+                        FT_USERNAME: document.getElementById('ft_username').value,
+                        FT_PASSWORD: document.getElementById('ft_password').value,
+                        JOGO_SLUG: document.getElementById('jogo_slug').value,
+                        TARGET_SECTOR_SLUG: document.getElementById('target_sector_slug').value,
+                        DEPENDENTE_ID: document.getElementById('dependente_id').value,
+                        OPENAI_API_KEY: document.getElementById('openai_api_key').value,
+                        TWOCAPTCHA_API_KEY: document.getElementById('twocaptcha_api_key').value
+                    };
+                    
+                    Object.keys(data).forEach(key => {
+                        if (data[key] === "") delete data[key];
                     });
-            }, 60000);
-        });
+                    
+                    fetch('/save_config', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(data)
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        alert(data.message);
+                        window.location.reload();
+                    });
+                };
+                
+                window.downloadLogs = function() {
+                    const logs = logOutput.textContent;
+                    const blob = new Blob([logs], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'bot_logs.txt';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                };
+            } else {
+                statusIndicator.textContent = '🟢 Normal';
+            }
+        }, 3000); // Espera 3 segundos para ver se app.js carregou
     </script>
 </body>
 </html>
