@@ -1,39 +1,45 @@
-# Dockerfile (v1.1 - Versão do Python Corrigida)
+# Dockerfile (v1.2 - Descoberta Dinâmica de Caminho)
 
 # ==============================================================================
-# Estágio 1: Build - Instalação de dependências
+# Estágio 1: Build - Instalação e descoberta de dependências
 # ==============================================================================
-# Usamos a imagem oficial do Playwright que já vem com os navegadores e dependências do sistema.
-# Esta imagem usa Python 3.12.
 FROM mcr.microsoft.com/playwright/python:v1.44.0-jammy AS build
 
-# Define o diretório de trabalho dentro do contêiner
 WORKDIR /app
 
-# Copia o arquivo de dependências primeiro para aproveitar o cache do Docker.
 COPY requirements.txt .
 
-# Instala as dependências Python usando pip
+# Instala as dependências
 RUN pip install --no-cache-dir -r requirements.txt
+
+# NOVO: Descobre dinamicamente o caminho do site-packages e o salva em um arquivo.
+# Usamos 'flask' como exemplo, pois é uma dependência garantida.
+# O comando extrai a linha "Location:" e remove o prefixo "Location: ".
+RUN pip show flask | grep Location | awk '{print $2}' > /app/site-packages-path.txt
 
 # ==============================================================================
 # Estágio 2: Final - A imagem de produção
 # ==============================================================================
-# Começamos novamente da imagem base para manter a imagem final limpa
 FROM mcr.microsoft.com/playwright/python:v1.44.0-jammy
 
 WORKDIR /app
 
-# CORREÇÃO: Ajustado para a versão Python 3.12, que é a usada na imagem base
-# Copia as dependências já instaladas do estágio de build
-COPY --from=build /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+# Copia o arquivo com o caminho do site-packages do estágio de build
+COPY --from=build /app/site-packages-path.txt /app/site-packages-path.txt
+
+# Copia os binários (como o gunicorn)
 COPY --from=build /usr/local/bin /usr/local/bin
 
-# Copia todo o código da aplicação para o diretório de trabalho
+# Lê o caminho do arquivo e o usa em um comando `COPY` com `ARG`.
+# Isso garante que o caminho correto seja usado para copiar as bibliotecas.
+RUN SITE_PACKAGES_PATH=$(cat /app/site-packages-path.txt) && \
+    cp -r --parents $(find $SITE_PACKAGES_PATH -mindepth 1 -maxdepth 1) /usr/local/lib/$(basename $(dirname $SITE_PACKAGES_PATH))/site-packages/
+
+# Copia o restante do código da aplicação
 COPY . .
 
-# Expõe a porta que o Flask/SocketIO irá usar
+# Expõe a porta
 EXPOSE 5001
 
-# Define o comando que será executado quando o contêiner iniciar.
+# Comando de início (sem alterações)
 CMD ["gunicorn", "--worker-class", "eventlet", "-w", "1", "-b", "0.0.0.0:5001", "--threads", "4", "--timeout", "120", "main_app:app"]
