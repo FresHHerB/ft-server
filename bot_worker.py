@@ -20,7 +20,7 @@ log = logging.getLogger("bot-worker")
 
 def analyze_and_log_sectors(soup: BeautifulSoup) -> bool:
     """
-    Analisa todos os setores e mostra o status completo com logging melhorado
+    Analisa setores e mostra apenas o setor alvo + setores disponíveis
     Retorna True se o setor alvo estiver disponível
     """
     all_sector_elements = soup.find_all(class_="sector")
@@ -33,43 +33,27 @@ def analyze_and_log_sectors(soup: BeautifulSoup) -> bool:
     
     target_found_and_available = False
     available_sectors = []
-    unavailable_sectors = []
     
-    # Primeiro, organiza todos os setores
+    # Analisa todos os setores
     for sector_element in all_sector_elements:
         sector_slug = sector_element.get('id', 'desconhecido')
         is_disabled = 'disabled' in sector_element.get('class', [])
-        status = "Indisponível" if is_disabled else "DISPONÍVEL"
         
         if sector_slug == TARGET_SECTOR_SLUG:
-            # Setor alvo - sempre mostra primeiro
+            # Setor alvo - sempre mostra
+            status = "DISPONÍVEL" if not is_disabled else "Indisponível"
             icon = "🎯" if not is_disabled else "❌"
             log.info(f"  {icon} Setor '{sector_slug.upper()}': {status} <--- ALVO")
             if not is_disabled:
                 target_found_and_available = True
-        else:
-            # Outros setores - separa por status
-            if is_disabled:
-                unavailable_sectors.append(sector_slug)
-            else:
-                available_sectors.append(sector_slug)
+        elif not is_disabled:
+            # Outros setores - apenas se disponíveis
+            available_sectors.append(sector_slug)
     
-    # Mostra setores disponíveis (além do alvo)
+    # Mostra apenas setores disponíveis (além do alvo)
     if available_sectors:
         for sector in sorted(available_sectors):
             log.info(f"  ✅ Setor '{sector.upper()}': DISPONÍVEL")
-    
-    # Mostra setores indisponíveis (exceto o alvo que já foi mostrado)
-    if unavailable_sectors:
-        for sector in sorted(unavailable_sectors):
-            log.info(f"  ❌ Setor '{sector.upper()}': Indisponível")
-    
-    # Resumo final
-    total_sectors = len(all_sector_elements)
-    available_count = len(available_sectors) + (1 if target_found_and_available else 0)
-    unavailable_count = total_sectors - available_count
-    
-    log.info(f"  📈 Resumo: {available_count}/{total_sectors} setores disponíveis")
     
     return target_found_and_available
 
