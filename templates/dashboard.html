@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Bot Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Dashboard do Bot de Reserva</h1>
+            <a href="/logout">Sair</a>
+        </header>
+
+        <div class="main-content">
+            <div class="config-panel">
+                <h2>Configurações</h2>
+                <form id="configForm">
+                    <label>Usuário FT:</label><input type="text" id="ft_username" value="{{ config.FT_USERNAME }}">
+                    <label>Senha FT:</label><input type="password" id="ft_password" placeholder="Deixe em branco para não alterar">
+                    <label>Jogo Slug:</label><input type="text" id="jogo_slug" value="{{ config.JOGO_SLUG }}">
+                    <label>Setor Alvo:</label><input type="text" id="target_sector_slug" value="{{ config.TARGET_SECTOR_SLUG }}">
+                    <label>ID Dependente:</label><input type="text" id="dependente_id" value="{{ config.DEPENDENTE_ID }}">
+                    <label>OpenAI API Key:</label><input type="password" id="openai_api_key" placeholder="Deixe em branco para não alterar">
+                    <label>2Captcha API Key:</label><input type="password" id="twocaptcha_api_key" placeholder="Deixe em branco para não alterar">
+                    <button type="button" onclick="saveConfig()">Salvar e Reiniciar Bot</button>
+                </form>
+            </div>
+
+            <div class="control-panel">
+                <h2>Controle e Status</h2>
+                <p>Status do Bot: <b id="bot-status">{{ status }}</b></p>
+                <button onclick="startBot()">▶️ Iniciar Bot</button>
+                <button onclick="stopBot()">⏹️ Parar Bot</button>
+
+                <h2>Logs em Tempo Real</h2>
+                <pre id="log-output"></pre>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
