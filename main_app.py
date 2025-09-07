@@ -1,4 +1,4 @@
-# main_app.py (v1.1 - Pronto para Produção)
+# main_app.py (v1.2 - Correção de Imports)
 import os
 import subprocess
 import logging
@@ -60,7 +60,8 @@ def dashboard():
 
 @app.route('/save_config', methods=['POST'])
 def save_config():
-    if not session.get('logged_in'): return jsonify(error="Não autorizado"), 403
+    if not session.get('logged_in'): 
+        return jsonify(error="Não autorizado"), 403
     
     data = request.json
     # Lê o .env existente para preservar variáveis não enviadas pelo formulário
@@ -81,7 +82,8 @@ def save_config():
 @app.route('/start_bot', methods=['POST'])
 def start_bot():
     global bot_process
-    if not session.get('logged_in'): return jsonify(error="Não autorizado"), 403
+    if not session.get('logged_in'): 
+        return jsonify(error="Não autorizado"), 403
     
     if bot_process and bot_process.poll() is None:
         log.warning("Tentativa de iniciar um bot que já está rodando.")
@@ -98,7 +100,8 @@ def start_bot():
 @app.route('/stop_bot', methods=['POST'])
 def stop_bot():
     global bot_process
-    if not session.get('logged_in'): return jsonify(error="Não autorizado"), 403
+    if not session.get('logged_in'): 
+        return jsonify(error="Não autorizado"), 403
     
     if bot_process and bot_process.poll() is None:
         log.info(f"Parando o processo do bot (PID: {bot_process.pid})...")
@@ -149,6 +152,12 @@ def handle_connect():
     with thread_lock:
         if thread is None or not thread.is_alive():
             thread = socketio.start_background_task(target=tail_log_file)
+
+# --- Health Check Endpoint ---
+@app.route('/health')
+def health_check():
+    """Endpoint de health check para o Easypanel"""
+    return {"status": "healthy", "timestamp": time.time()}, 200
 
 if __name__ == '__main__':
     # Esta seção é apenas para desenvolvimento local. Em produção, o Gunicorn será usado.
