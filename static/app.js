@@ -1,4 +1,4 @@
-// static/app.js - Versão Simplificada Funcional
+// static/app.js - Versão Completa com Reiniciar e Limpar Logs
 console.log('🚀 Carregando app.js...');
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     const logOutput = document.getElementById('log-output');
     const statusElement = document.getElementById('bot-status');
+    const logInfo = document.getElementById('log-info');
     
     if (!logOutput) {
         console.error('❌ Elemento log-output não encontrado!');
@@ -17,7 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
         logOutput.scrollTop = logOutput.scrollHeight;
     }
     
-    // Carrega logs via API primeiro
+    // Carrega logs via API
     async function loadLogsViaAPI() {
         try {
             console.log('🔄 Carregando logs via API...');
@@ -27,6 +28,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (response.ok) {
                 const data = await response.json();
                 logOutput.textContent = data.logs || 'Nenhum log disponível';
+                if (logInfo) {
+                    logInfo.textContent = `${data.file_size} chars • ${new Date().toLocaleTimeString()}`;
+                }
                 scrollToBottom();
                 console.log(`✅ Logs carregados via API (${data.file_size} chars)`);
             } else {
@@ -68,6 +72,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('📜 Recebido log histórico via WebSocket');
                 logOutput.textContent = data.logs || 'Nenhum log disponível';
                 logOutput.textContent += '\n📡 Monitoramento em tempo real ativo\n';
+                if (logInfo) {
+                    logInfo.textContent = `Tempo real • ${new Date().toLocaleTimeString()}`;
+                }
                 scrollToBottom();
             });
             
@@ -75,6 +82,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 console.log('📝 Nova linha de log recebida');
                 logOutput.textContent += data.line;
                 scrollToBottom();
+            });
+            
+            socket.on('log_cleared', function(data) {
+                console.log('🧹 Logs foram limpos');
+                logOutput.textContent = data.message + '\n\n';
+                if (logInfo) {
+                    logInfo.textContent = `Limpo • ${new Date().toLocaleTimeString()}`;
+                }
+                scrollToBottom();
+                // Recarrega logs após 2 segundos
+                setTimeout(loadLogsViaAPI, 2000);
             });
             
             socket.on('connect_error', function(error) {
@@ -91,7 +109,8 @@ document.addEventListener('DOMContentLoaded', function() {
         logOutput.textContent += '\n⚠️ Usando apenas modo API (sem tempo real)\n';
     }
     
-    // Funções globais para os botões
+    // === FUNÇÕES GLOBAIS PARA OS BOTÕES ===
+    
     window.startBot = function() {
         console.log('🚀 Iniciando bot...');
         
@@ -100,7 +119,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(data => {
                 alert(data.message);
                 if (statusElement) statusElement.textContent = 'Rodando';
-                loadLogsViaAPI(); // Recarrega logs
+                loadLogsViaAPI();
             })
             .catch(error => {
                 console.error('❌ Erro ao iniciar bot:', error);
@@ -116,11 +135,60 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(data => {
                 alert(data.message);
                 if (statusElement) statusElement.textContent = 'Parado';
-                loadLogsViaAPI(); // Recarrega logs
+                loadLogsViaAPI();
             })
             .catch(error => {
                 console.error('❌ Erro ao parar bot:', error);
                 alert('Erro ao parar bot: ' + error.message);
+            });
+    };
+    
+    // NOVA FUNÇÃO: Reiniciar Bot
+    window.restartBot = function() {
+        console.log('🔄 Reiniciando bot...');
+        
+        if (!confirm('Tem certeza que deseja reiniciar o bot? Os logs atuais serão limpos.')) {
+            return;
+        }
+        
+        // Mostra feedback visual
+        logOutput.textContent += '\n🔄 REINICIANDO BOT... Aguarde...\n';
+        scrollToBottom();
+        
+        fetch('/restart_bot', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                alert(data.message);
+                if (statusElement) statusElement.textContent = 'Rodando';
+                // Aguarda um pouco antes de recarregar logs
+                setTimeout(loadLogsViaAPI, 3000);
+            })
+            .catch(error => {
+                console.error('❌ Erro ao reiniciar bot:', error);
+                alert('Erro ao reiniciar bot: ' + error.message);
+                loadLogsViaAPI();
+            });
+    };
+    
+    // NOVA FUNÇÃO: Limpar Logs
+    window.clearLogs = function() {
+        console.log('🧹 Limpando logs...');
+        
+        if (!confirm('Tem certeza que deseja limpar todos os logs?')) {
+            return;
+        }
+        
+        fetch('/clear_logs', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                alert(data.message);
+                // O WebSocket vai receber o evento log_cleared e atualizar automaticamente
+                // Mas fazemos fallback também
+                setTimeout(loadLogsViaAPI, 1000);
+            })
+            .catch(error => {
+                console.error('❌ Erro ao limpar logs:', error);
+                alert('Erro ao limpar logs: ' + error.message);
             });
     };
     
@@ -162,6 +230,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Função para baixar logs
     window.downloadLogs = function() {
+        console.log('📥 Baixando logs...');
+        
         const logs = logOutput.textContent;
         const blob = new Blob([logs], { type: 'text/plain' });
         const url = window.URL.createObjectURL(blob);
@@ -172,7 +242,9 @@ document.addEventListener('DOMContentLoaded', function() {
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
+        
+        console.log('✅ Download de logs iniciado');
     };
     
-    console.log('✅ Dashboard inicializado com sucesso');
+    console.log('✅ Dashboard inicializado com sucesso - Todas as funções carregadas');
 });
