@@ -1,11 +1,12 @@
-# bot_worker.py - Versão com Suporte a Ambos os Formatos de Setores
+# bot_worker.py - Versão com Extração Dinâmica de Dependentes
 import logging
 import time
 import random
 import httpx
 import re
 from bs4 import BeautifulSoup
-from config import (BASE_URL, JOGO_SLUG, DEPENDENTE_ID, TARGET_SECTOR_SLUG,
+from typing import List, Dict, Optional
+from config import (BASE_URL, JOGO_SLUG, TARGET_SECTOR_SLUG,
                     MAX_WATCH_ATTEMPTS, WATCH_INTERVAL_MIN, WATCH_INTERVAL_MAX,
                     HEADERS, DEBUG_HTML_FILE, SETORES_URL, CATEGORIA_URL)
 from session_manager import get_authenticated_session
@@ -18,6 +19,64 @@ logging.basicConfig(
               logging.StreamHandler()],
 )
 log = logging.getLogger("bot-worker")
+
+def extract_dependentes_from_page(soup: BeautifulSoup) -> List[Dict[str, str]]:
+    """
+    Extrai todos os dependentes disponíveis da página do setor.
+    Retorna lista de dicionários com informações dos dependentes.
+    """
+    dependentes = []
+    
+    # Procura por inputs com name="dependentes"
+    dependente_inputs = soup.find_all("input", {"name": "dependentes", "type": "checkbox"})
+    
+    if not dependente_inputs:
+        log.warning("⚠️ Nenhum input de dependente encontrado na página")
+        return dependentes
+    
+    log.info(f"🔍 Encontrados {len(dependente_inputs)} dependentes disponíveis:")
+    
+    for input_elem in dependente_inputs:
+        dependente_id = input_elem.get('value', '')
+        dependente_html_id = input_elem.get('id', '')
+        
+        # Tenta extrair o nome do dependente do label associado
+        dependente_name = "Desconhecido"
+        
+        # Procura pelo label associado
+        if dependente_html_id:
+            label = soup.find("label", {"for": dependente_html_id})
+            if label:
+                # Remove texto do input e pega só o nome
+                name_text = label.get_text(strip=True)
+                # Remove quebras de linha e espaços extras
+                dependente_name = re.sub(r'\s+', ' ', name_text).strip()
+        
+        dependente_info = {
+            'id': dependente_id,
+            'name': dependente_name,
+            'html_id': dependente_html_id
+        }
+        
+        dependentes.append(dependente_info)
+        log.info(f"  👤 ID: {dependente_id} | Nome: {dependente_name}")
+    
+    return dependentes
+
+def select_best_dependente(dependentes: List[Dict[str, str]]) -> Optional[Dict[str, str]]:
+    """
+    Seleciona o melhor dependente para usar na reserva.
+    Por enquanto, usa o primeiro disponível, mas pode ser expandido com lógica mais complexa.
+    """
+    if not dependentes:
+        log.error("❌ Nenhum dependente disponível para seleção")
+        return None
+    
+    # Por enquanto, usa o primeiro dependente disponível
+    selected = dependentes[0]
+    log.info(f"🎯 Dependente selecionado: {selected['name']} (ID: {selected['id']})")
+    
+    return selected
 
 def detect_sectors_page_type(soup: BeautifulSoup) -> str:
     """
@@ -182,7 +241,7 @@ def get_target_sector_url() -> str:
 
 def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
     """
-    Tenta atacar o setor alvo com estratégias múltiplas para ambos os formatos.
+    Tenta atacar o setor alvo com estratégias múltiplas e extração dinâmica de dependentes.
     """
     log.info("⚡ Iniciando sequência de ataque...")
     
@@ -238,7 +297,21 @@ def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
                 log.warning(f"  ⚠️ {strategy_name}: Página não contém referência ao setor alvo")
                 continue
             
-            # 3. Extrai CSRF token
+            # 3. NOVA FUNCIONALIDADE: Extrai dependentes dinamicamente
+            log.info(f"  👥 {strategy_name}: Extraindo dependentes da página...")
+            dependentes = extract_dependentes_from_page(sector_soup)
+            
+            if not dependentes:
+                log.error(f"  ❌ {strategy_name}: Nenhum dependente encontrado na página")
+                continue
+            
+            # Seleciona o melhor dependente
+            selected_dependente = select_best_dependente(dependentes)
+            if not selected_dependente:
+                log.error(f"  ❌ {strategy_name}: Falha na seleção de dependente")
+                continue
+            
+            # 4. Extrai CSRF token
             csrf_element = sector_soup.find("input", {"name": "csrfmiddlewaretoken"})
             if not csrf_element:
                 log.warning(f"  ⚠️ {strategy_name}: CSRF token não encontrado")
@@ -246,29 +319,29 @@ def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
             
             csrf_token = csrf_element.get("value")
             log.info(f"  🔑 {strategy_name}: CSRF token extraído")
-
-            DEPENDENTES_ID = sector_soup.find("input", {"name": "dependentes"})
-            id_dep = DEPENDENTES_ID.get("value")
             
-            # 4. Prepara payload para reserva
+            # 5. Prepara payload para reserva com dependente selecionado
             payload = {
                 "csrfmiddlewaretoken": csrf_token,
-                "dependentes": id_dep
+                "dependentes": selected_dependente['id']  # Usa ID extraído dinamicamente
             }
             
-            # 5. Executa reserva
+            log.info(f"  📋 {strategy_name}: Payload preparado com dependente {selected_dependente['name']}")
+            
+            # 6. Executa reserva
             client.headers['Referer'] = target_url
             log.info(f"  🎯 {strategy_name}: Executando reserva...")
             
             post_response = client.post(target_url, data=payload)
             
-            # 6. Verifica resultado
+            # 7. Verifica resultado
             if post_response.history:
                 redirect_location = post_response.history[0].headers.get("location", "")
                 if "/ingressos/" in redirect_location:
                     success_url = f"{BASE_URL}{redirect_location}"
                     log.info(f"🎉 SUCESSO TOTAL! RESERVA CONFIRMADA via {strategy_name}!")
                     log.info(f"🎫 URL da reserva: {success_url}")
+                    log.info(f"👤 Dependente usado: {selected_dependente['name']} (ID: {selected_dependente['id']})")
                     log.info("🏆 MISSÃO CUMPRIDA! Bot concluído com êxito.")
                     return True
                 else:
@@ -278,6 +351,7 @@ def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
             if "/ingressos/" in post_response.url.path:
                 log.info(f"🎉 SUCESSO! Reserva confirmada via {strategy_name}!")
                 log.info(f"🎫 URL final: {post_response.url}")
+                log.info(f"👤 Dependente usado: {selected_dependente['name']} (ID: {selected_dependente['id']})")
                 return True
             
             log.warning(f"  ❌ {strategy_name}: Tentativa falhou")
@@ -363,7 +437,7 @@ def main():
     log.info("=" * 60)
     log.info(f"🎯 Setor alvo: {TARGET_SECTOR_SLUG.upper()}")
     log.info(f"🎮 Jogo: {JOGO_SLUG}")
-    log.info(f"👤 Dependente ID: {DEPENDENTE_ID}")
+    log.info(f"👥 Dependentes: EXTRAÇÃO DINÂMICA")
     log.info(f"🔄 Máximo de tentativas: {MAX_WATCH_ATTEMPTS}")
     log.info(f"⏱️ Intervalo: {WATCH_INTERVAL_MIN}s - {WATCH_INTERVAL_MAX}s")
     log.info("=" * 60)
