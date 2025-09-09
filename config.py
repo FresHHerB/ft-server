@@ -1,4 +1,4 @@
-# config.py - Versão Corrigida
+# config.py - Versão Atualizada (sem DEPENDENTE_ID fixo)
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -9,7 +9,7 @@ load_dotenv()
 ADMIN_USER = os.getenv("ADMIN_USER", "admin")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "change_this_password")
 
-# --- Credenciais do Fiel Torcedor (CORRIGIDO) ---
+# --- Credenciais do Fiel Torcedor ---
 FT_USERNAME = os.getenv("FT_USERNAME")
 FT_PASSWORD = os.getenv("FT_PASSWORD")
 
@@ -23,9 +23,10 @@ TWOCAPTCHA_API_KEY = os.getenv("TWOCAPTCHA_API_KEY")
 
 # --- Configurações do Jogo ---
 JOGO_SLUG = os.getenv("JOGO_SLUG")
-DEPENDENTE_ID = os.getenv("DEPENDENTE_ID")
 TARGET_SECTOR_SLUG = os.getenv("TARGET_SECTOR_SLUG")
 CATEGORIA_ID = os.getenv("CATEGORIA_ID", "1")
+
+# REMOVIDO: DEPENDENTE_ID (agora é extraído dinamicamente da página)
 
 # --- URLs ---
 BASE_URL = "https://www.fieltorcedor.com.br"
@@ -44,7 +45,7 @@ else:
 MAX_WATCH_ATTEMPTS = int(os.getenv("MAX_WATCH_ATTEMPTS", "3000"))
 WATCH_INTERVAL_MIN = float(os.getenv("WATCH_INTERVAL_MIN", "2.2"))
 WATCH_INTERVAL_MAX = float(os.getenv("WATCH_INTERVAL_MAX", "3.6"))
-CAPTCHA_SOLVE_TIMEOUT = int(os.getenv("CAPTCHA_SOLVE_TIMEOUT", "60"))  # Aumentado para 60s
+CAPTCHA_SOLVE_TIMEOUT = int(os.getenv("CAPTCHA_SOLVE_TIMEOUT", "60"))
 
 # --- Headers e Arquivos ---
 HEADERS = {
