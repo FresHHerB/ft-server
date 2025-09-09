@@ -32,8 +32,7 @@
                 <label>Setor Alvo:</label>
                 <input type="text" id="target_sector_slug" value="{{ config.TARGET_SECTOR_SLUG or '' }}">
                 
-                <label>ID Dependente:</label>
-                <input type="text" id="dependente_id" value="{{ config.DEPENDENTE_ID or '' }}">
+                <!-- REMOVIDO: Campo DEPENDENTE_ID - agora é extraído automaticamente -->
                 
                 <label>OpenAI API Key:</label>
                 <input type="password" id="openai_api_key" placeholder="Deixe em branco para não alterar">
@@ -48,6 +47,21 @@
                     <p><strong>Bot:</strong> <span id="bot-status">{{ status }}</span></p>
                     <p><strong>Jogo:</strong> {{ config.JOGO_SLUG or 'Não configurado' }}</p>
                     <p><strong>Setor:</strong> {{ config.TARGET_SECTOR_SLUG or 'Não configurado' }}</p>
+                    <p><strong>Dependentes:</strong> <span style="color: #28a745;">Extração Automática</span></p>
+                </div>
+                
+                <div class="info-panel" style="border-left-color: #17a2b8;">
+                    <h3>💡 Nova Funcionalidade</h3>
+                    <p><strong>IDs de Dependentes:</strong></p>
+                    <p style="font-size: 13px; color: #6c757d;">
+                        Agora são extraídos automaticamente da página do setor! 
+                        Não é mais necessário configurar manualmente.
+                    </p>
+                    <p style="font-size: 12px; color: #495057;">
+                        ✅ O bot detecta todos os dependentes disponíveis<br>
+                        ✅ Seleciona automaticamente o melhor para usar<br>
+                        ✅ Mostra nos logs qual dependente foi escolhido
+                    </p>
                 </div>
             </div>
 
@@ -161,7 +175,7 @@
                         FT_PASSWORD: document.getElementById('ft_password').value,
                         JOGO_SLUG: document.getElementById('jogo_slug').value,
                         TARGET_SECTOR_SLUG: document.getElementById('target_sector_slug').value,
-                        DEPENDENTE_ID: document.getElementById('dependente_id').value,
+                        // REMOVIDO: DEPENDENTE_ID
                         OPENAI_API_KEY: document.getElementById('openai_api_key').value,
                         TWOCAPTCHA_API_KEY: document.getElementById('twocaptcha_api_key').value
                     };
