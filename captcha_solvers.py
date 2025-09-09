@@ -16,11 +16,11 @@ def solve_with_openai(page: Page) -> str:
         log.info("     🎵 Solicitando desafio de áudio...")
         challenge_frame.locator("button#recaptcha-audio-button").click(timeout=10000)
         
-        # CORREÇÃO PRINCIPAL: Aguarda o link aparecer após clicar
-        time.sleep(2)  # Aguarda 2 segundos para o áudio carregar
-        
         log.info("     🔗 Extraindo link de download do áudio...")
-        download_link = challenge_frame.locator("a.rc-audiochallenge-tdownload-link").get_attribute("href", timeout=10000)
+        # CORREÇÃO: Aguarda o elemento aparecer primeiro, depois extrai o href
+        download_link_element = challenge_frame.locator("a.rc-audiochallenge-tdownload-link")
+        download_link_element.wait_for(timeout=10000)  # Aguarda elemento aparecer
+        download_link = download_link_element.get_attribute("href")
         
         log.info("     💾 Baixando áudio...")
         resp = requests.get(download_link)
