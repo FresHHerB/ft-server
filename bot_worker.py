@@ -239,9 +239,75 @@ def get_target_sector_url() -> str:
     # A lógica do ataque tentará ambos se necessário
     return standard_url
 
+def handle_mode_selection_page(client: httpx.Client, sector_soup: BeautifulSoup, current_url: str) -> BeautifulSoup:
+    """
+    Lida com a página de seleção de modo de compra (quando existe).
+    Retorna o soup da página final ou None se falhar.
+    """
+    log.info("  🎛️ Detectada página de seleção de modo - processando...")
+    
+    # Verifica se há o formulário de modo de compra
+    mode_form = sector_soup.find("form")
+    if not mode_form:
+        log.warning("  ⚠️ Formulário de modo não encontrado")
+        return None
+    
+    # Extrai CSRF token
+    csrf_element = sector_soup.find("input", {"name": "csrfmiddlewaretoken"})
+    if not csrf_element:
+        log.warning("  ⚠️ CSRF token não encontrado na página de modo")
+        return None
+    
+    csrf_token = csrf_element.get("value")
+    log.info("  🔑 CSRF token extraído da página de modo")
+    
+    # Verifica se o modo "auto" está disponível e selecionado
+    auto_input = sector_soup.find("input", {"name": "mode", "value": "auto"})
+    if not auto_input:
+        log.warning("  ⚠️ Modo automático não encontrado")
+        return None
+    
+    log.info("  ✅ Modo automático encontrado e será usado")
+    
+    # Prepara payload para submeter o modo
+    mode_payload = {
+        "csrfmiddlewaretoken": csrf_token,
+        "mode": "auto"
+    }
+    
+    # Submete o formulário de modo
+    client.headers['Referer'] = current_url
+    log.info("  📤 Submetendo seleção de modo automático...")
+    
+    try:
+        mode_response = client.post(current_url, data=mode_payload)
+        
+        if mode_response.status_code != 200:
+            log.warning(f"  ⚠️ Resposta inesperada ao submeter modo: {mode_response.status_code}")
+            return None
+        
+        log.info("  ✅ Modo submetido com sucesso")
+        
+        # Analisa a nova página (deve ser a página de dependentes)
+        new_soup = BeautifulSoup(mode_response.text, "html.parser")
+        
+        # Verifica se agora temos dependentes na página
+        dependente_inputs = new_soup.find_all("input", {"name": "dependentes", "type": "checkbox"})
+        if dependente_inputs:
+            log.info(f"  🎯 Sucesso! Agora na página de dependentes ({len(dependente_inputs)} encontrados)")
+            return new_soup
+        else:
+            log.warning("  ⚠️ Após submeter modo, ainda não encontrou dependentes")
+            return None
+            
+    except Exception as e:
+        log.error(f"  💥 Erro ao submeter modo: {e}")
+        return None
+
 def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
     """
     Tenta atacar o setor alvo com estratégias múltiplas e extração dinâmica de dependentes.
+    Agora lida com fluxo de duas etapas (modo de compra + dependentes).
     """
     log.info("⚡ Iniciando sequência de ataque...")
     
@@ -292,12 +358,30 @@ def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
             # 2. Analisa o conteúdo da página do setor
             sector_soup = BeautifulSoup(sector_response.text, "html.parser")
             
-            # Verifica se está realmente na página do setor correto
-            if TARGET_SECTOR_SLUG.upper() not in sector_response.text.upper():
-                log.warning(f"  ⚠️ {strategy_name}: Página não contém referência ao setor alvo")
-                continue
+            # 3. NOVA LÓGICA: Detecta tipo de página e lida adequadamente
             
-            # 3. NOVA FUNCIONALIDADE: Extrai dependentes dinamicamente
+            # Verifica se é página de seleção de modo de compra
+            if "ESCOLHA O TIPO DE COMPRA" in sector_response.text.upper():
+                log.info(f"  🎛️ {strategy_name}: Detectada página de seleção de modo")
+                
+                # Processa a página de modo e obtém a página de dependentes
+                final_soup = handle_mode_selection_page(client, sector_soup, target_url)
+                if not final_soup:
+                    log.warning(f"  ❌ {strategy_name}: Falha ao processar página de modo")
+                    continue
+                
+                # Atualiza para usar a página final
+                sector_soup = final_soup
+                log.info(f"  ✅ {strategy_name}: Agora na página final de dependentes")
+                
+            # Verifica se contém referência ao setor (para páginas diretas)
+            elif TARGET_SECTOR_SLUG.upper() not in sector_response.text.upper() and "PARA QUEM SÃO OS INGRESSOS" not in sector_response.text.upper():
+                log.warning(f"  ⚠️ {strategy_name}: Página não contém referência ao setor nem formulário de dependentes")
+                continue
+            else:
+                log.info(f"  ✅ {strategy_name}: Página de dependentes detectada diretamente")
+            
+            # 4. Extrai dependentes dinamicamente
             log.info(f"  👥 {strategy_name}: Extraindo dependentes da página...")
             dependentes = extract_dependentes_from_page(sector_soup)
             
@@ -311,7 +395,7 @@ def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
                 log.error(f"  ❌ {strategy_name}: Falha na seleção de dependente")
                 continue
             
-            # 4. Extrai CSRF token
+            # 5. Extrai CSRF token da página final
             csrf_element = sector_soup.find("input", {"name": "csrfmiddlewaretoken"})
             if not csrf_element:
                 log.warning(f"  ⚠️ {strategy_name}: CSRF token não encontrado")
@@ -320,7 +404,7 @@ def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
             csrf_token = csrf_element.get("value")
             log.info(f"  🔑 {strategy_name}: CSRF token extraído")
             
-            # 5. Prepara payload para reserva com dependente selecionado
+            # 6. Prepara payload para reserva com dependente selecionado
             payload = {
                 "csrfmiddlewaretoken": csrf_token,
                 "dependentes": selected_dependente['id']  # Usa ID extraído dinamicamente
@@ -328,13 +412,18 @@ def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
             
             log.info(f"  📋 {strategy_name}: Payload preparado com dependente {selected_dependente['name']}")
             
-            # 6. Executa reserva
-            client.headers['Referer'] = target_url
-            log.info(f"  🎯 {strategy_name}: Executando reserva...")
+            # 7. Executa reserva (na URL atual, que pode ter mudado após o modo)
+            final_url = target_url
+            if "modo-de-compra" in target_url:
+                # Se estávamos na URL de modo, agora devemos postar na URL padrão
+                final_url = f"{BASE_URL}/jogos/{JOGO_SLUG}/setor/{TARGET_SECTOR_SLUG}/"
             
-            post_response = client.post(target_url, data=payload)
+            client.headers['Referer'] = final_url
+            log.info(f"  🎯 {strategy_name}: Executando reserva em {final_url}...")
             
-            # 7. Verifica resultado
+            post_response = client.post(final_url, data=payload)
+            
+            # 8. Verifica resultado
             if post_response.history:
                 redirect_location = post_response.history[0].headers.get("location", "")
                 if "/ingressos/" in redirect_location:
