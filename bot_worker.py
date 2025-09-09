@@ -119,6 +119,7 @@ def watch_and_attack(session_cookies: dict) -> bool:
                         # 2. Extrai CSRF token
                         sector_soup = BeautifulSoup(sector_response.text, "html.parser")
                         csrf_element = sector_soup.find("input", {"name": "csrfmiddlewaretoken"})
+                        DEPENDENTE_ID = sector_soup.find("input", {"name": "dependentes"})
                         
                         if not csrf_element:
                             log.error("❌ CSRF token não encontrado!")
