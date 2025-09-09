@@ -54,11 +54,13 @@
             <div class="control-panel">
                 <h2>🎮 Controle</h2>
                 
-                <div>
+                <div class="control-buttons">
                     <button onclick="startBot()" class="btn-start">▶️ Iniciar Bot</button>
                     <button onclick="stopBot()" class="btn-stop">⏹️ Parar Bot</button>
+                    <button onclick="restartBot()" class="btn-restart">🔄 Reiniciar Bot</button>
+                    <button onclick="clearLogs()" class="btn-clear">🧹 Limpar Logs</button>
                     <button onclick="downloadLogs()" class="btn-download">📥 Baixar Logs</button>
-                    <button onclick="window.location.reload()">🔄 Atualizar</button>
+                    <button onclick="window.location.reload()" class="btn-refresh">↻ Atualizar</button>
                 </div>
 
                 <h3>📜 Logs do Bot</h3>
@@ -126,6 +128,31 @@
                             document.getElementById('bot-status').textContent = 'Parado';
                             loadLogs();
                         });
+                };
+                
+                window.restartBot = function() {
+                    if (confirm('Tem certeza que deseja reiniciar o bot? Os logs serão limpos.')) {
+                        fetch('/restart_bot', { method: 'POST' })
+                            .then(res => res.json())
+                            .then(data => {
+                                alert(data.message);
+                                document.getElementById('bot-status').textContent = 'Rodando';
+                                loadLogs();
+                            })
+                            .catch(err => alert('Erro: ' + err.message));
+                    }
+                };
+                
+                window.clearLogs = function() {
+                    if (confirm('Tem certeza que deseja limpar todos os logs?')) {
+                        fetch('/clear_logs', { method: 'POST' })
+                            .then(res => res.json())
+                            .then(data => {
+                                alert(data.message);
+                                loadLogs();
+                            })
+                            .catch(err => alert('Erro: ' + err.message));
+                    }
                 };
                 
                 window.saveConfig = function() {
