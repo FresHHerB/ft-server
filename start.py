@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# start.py - Script de inicialização e diagnóstico
+# start.py - Script de inicialização e diagnóstico atualizado
 
 import os
 import sys
@@ -30,6 +30,7 @@ def check_environment():
     from dotenv import load_dotenv
     load_dotenv()
     
+    # ATUALIZADO: Removido DEPENDENTE_ID da lista de variáveis críticas
     critical_vars = [
         "ADMIN_USER", "ADMIN_PASSWORD", 
         "FT_USERNAME", "FT_PASSWORD",
@@ -46,6 +47,11 @@ def check_environment():
         return False
     
     log.info("✅ Variáveis de ambiente OK")
+    
+    # Informa sobre a nova funcionalidade de dependentes
+    log.info("🆕 IDs de dependentes: EXTRAÇÃO AUTOMÁTICA habilitada")
+    log.info("   💡 Não é mais necessário configurar DEPENDENTE_ID manualmente")
+    
     return True
 
 def check_dependencies():
@@ -64,6 +70,7 @@ def check_dependencies():
         return True
     except ImportError as e:
         log.error(f"❌ Dependência faltando: {e}")
+        log.info("💡 Execute: pip install -r requirements.txt")
         return False
 
 def check_ports():
@@ -78,30 +85,75 @@ def check_ports():
         return True
     except OSError:
         log.warning("⚠️ Porta 5001 já está em uso")
+        log.info("💡 Tente parar outros processos ou use outra porta")
         return False
+
+def check_project_integrity():
+    """Verifica integridade do projeto"""
+    log = logging.getLogger("startup")
+    log.info("🔧 Verificando integridade do projeto...")
+    
+    required_files = [
+        "main_app.py",
+        "bot_worker.py", 
+        "session_manager.py",
+        "captcha_solvers.py",
+        "config.py",
+        "templates/dashboard.html",
+        "templates/login.html",
+        "static/app.js",
+        "static/style.css"
+    ]
+    
+    missing_files = []
+    for file_path in required_files:
+        if not Path(file_path).exists():
+            missing_files.append(file_path)
+    
+    if missing_files:
+        log.error(f"❌ Arquivos faltando: {', '.join(missing_files)}")
+        return False
+    
+    log.info("✅ Todos os arquivos do projeto encontrados")
+    return True
 
 def run_diagnostics():
     """Executa diagnósticos completos"""
     log = setup_logging()
-    log.info("🚀 Iniciando diagnósticos...")
+    log.info("🚀 Iniciando diagnósticos do projeto...")
+    log.info("=" * 60)
     
     checks = [
         ("Ambiente", check_environment),
         ("Dependências", check_dependencies),
+        ("Integridade do Projeto", check_project_integrity),
         ("Porta", check_ports)
     ]
     
     all_passed = True
     for name, check_func in checks:
         try:
+            log.info(f"📋 Verificando: {name}")
             if not check_func():
                 all_passed = False
+                log.error(f"❌ Check {name} FALHOU")
+            else:
+                log.info(f"✅ Check {name} OK")
         except Exception as e:
             log.error(f"❌ Erro no check {name}: {e}")
             all_passed = False
+        
+        log.info("-" * 40)
     
     if all_passed:
         log.info("🎉 Todos os checks passaram! Iniciando aplicação...")
+        log.info("🔥 Funcionalidades ativas:")
+        log.info("   ✅ Dashboard web em http://localhost:5001")
+        log.info("   ✅ Logs em tempo real via WebSocket")
+        log.info("   ✅ Extração automática de IDs de dependentes")
+        log.info("   ✅ Resolução automática de CAPTCHA")
+        log.info("   ✅ Vigilância contínua de setores")
+        log.info("=" * 60)
         return True
     else:
         log.error("❌ Alguns checks falharam. Verifique os logs acima.")
@@ -112,6 +164,7 @@ def start_application():
     log = logging.getLogger("startup")
     
     if not run_diagnostics():
+        log.error("💥 Falha nos diagnósticos. Não é possível iniciar.")
         sys.exit(1)
     
     try:
@@ -122,6 +175,9 @@ def start_application():
         
         # Inicia a aplicação
         log.info("🚀 Iniciando servidor Flask...")
+        log.info("🌐 Acesse: http://localhost:5001")
+        log.info("🔑 Use as credenciais configuradas no .env")
+        
         main_app.socketio.run(
             main_app.app, 
             host='0.0.0.0', 
@@ -135,4 +191,11 @@ def start_application():
         sys.exit(1)
 
 if __name__ == "__main__":
-    start_application()
+    try:
+        start_application()
+    except KeyboardInterrupt:
+        print("\n⚠️ Aplicação interrompida pelo usuário")
+        sys.exit(0)
+    except Exception as e:
+        print(f"💥 Erro fatal: {e}")
+        sys.exit(1)
