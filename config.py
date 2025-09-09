@@ -41,9 +41,9 @@ else:
     SETORES_URL = f"{BASE_URL}/jogos/JOGO_SLUG_NOT_SET/setores/"
 
 # --- Configurações de Automação ---
-MAX_WATCH_ATTEMPTS = int(os.getenv("MAX_WATCH_ATTEMPTS", "900"))
-WATCH_INTERVAL_MIN = float(os.getenv("WATCH_INTERVAL_MIN", "3.0"))
-WATCH_INTERVAL_MAX = float(os.getenv("WATCH_INTERVAL_MAX", "5.0"))
+MAX_WATCH_ATTEMPTS = int(os.getenv("MAX_WATCH_ATTEMPTS", "3000"))
+WATCH_INTERVAL_MIN = float(os.getenv("WATCH_INTERVAL_MIN", "2.2"))
+WATCH_INTERVAL_MAX = float(os.getenv("WATCH_INTERVAL_MAX", "3.6"))
 CAPTCHA_SOLVE_TIMEOUT = int(os.getenv("CAPTCHA_SOLVE_TIMEOUT", "60"))  # Aumentado para 60s
 
 # --- Headers e Arquivos ---
