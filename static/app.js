@@ -1,4 +1,4 @@
-// static/app.js - Versão Completa com Reiniciar e Limpar Logs
+// static/app.js - Versão Atualizada sem DEPENDENTE_ID
 console.log('🚀 Carregando app.js...');
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -200,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function() {
             FT_PASSWORD: document.getElementById('ft_password')?.value || '',
             JOGO_SLUG: document.getElementById('jogo_slug')?.value || '',
             TARGET_SECTOR_SLUG: document.getElementById('target_sector_slug')?.value || '',
-            DEPENDENTE_ID: document.getElementById('dependente_id')?.value || '',
+            // REMOVIDO: DEPENDENTE_ID (agora extraído automaticamente)
             OPENAI_API_KEY: document.getElementById('openai_api_key')?.value || '',
             TWOCAPTCHA_API_KEY: document.getElementById('twocaptcha_api_key')?.value || ''
         };
@@ -211,6 +211,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 delete configData[key];
             }
         });
+        
+        console.log('📋 Dados a salvar:', Object.keys(configData));
         
         fetch('/save_config', {
             method: 'POST',
@@ -247,4 +249,5 @@ document.addEventListener('DOMContentLoaded', function() {
     };
     
     console.log('✅ Dashboard inicializado com sucesso - Todas as funções carregadas');
+    console.log('🆕 Nova funcionalidade: IDs de dependentes são extraídos automaticamente!');
 });
