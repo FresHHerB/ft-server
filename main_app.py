@@ -1,4 +1,4 @@
-# main_app.py (v1.5 - WebSocket Fixes)
+# main_app.py (v1.6 - Com Botão Reiniciar e Limpeza de Logs)
 import os
 import subprocess
 import logging
@@ -66,6 +66,20 @@ class PersistentLogManager:
             log.error(f"❌ Erro ao ler log: {e}")
             return f"Erro ao carregar log: {str(e)}"
     
+    def clear_log_file(self):
+        """Limpa o arquivo de log"""
+        try:
+            with open(self.log_file, 'w', encoding='utf-8') as f:
+                timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                f.write(f"# Log limpo e reiniciado em {timestamp}\n")
+                f.write(f"🧹 LOGS ANTERIORES FORAM LIMPOS\n")
+                f.write(f"{'='*80}\n")
+            log.info(f"🧹 Log limpo: {self.log_file}")
+            return True
+        except Exception as e:
+            log.error(f"❌ Erro ao limpar log: {e}")
+            return False
+    
     def append_session_separator(self):
         """Adiciona separador para nova sessão do bot"""
         try:
@@ -129,6 +143,23 @@ def get_logs():
             "timestamp": time.time(),
             "file_size": len(content)
         })
+    except Exception as e:
+        return jsonify(error=str(e)), 500
+
+# --- Endpoint para limpar logs ---
+@app.route('/clear_logs', methods=['POST'])
+def clear_logs():
+    """API endpoint para limpar logs"""
+    if not session.get('logged_in'):
+        return jsonify(error="Não autorizado"), 403
+    
+    try:
+        if log_manager.clear_log_file():
+            # Emite evento via WebSocket para atualizar o frontend
+            socketio.emit('log_cleared', {'message': 'Logs limpos com sucesso'})
+            return jsonify(message="Logs limpos com sucesso!")
+        else:
+            return jsonify(error="Erro ao limpar logs"), 500
     except Exception as e:
         return jsonify(error=str(e)), 500
 
@@ -263,6 +294,49 @@ def stop_bot():
     except Exception as e:
         return jsonify(error=str(e)), 500
 
+# --- NOVO: Reiniciar Bot ---
+@app.route('/restart_bot', methods=['POST'])
+def restart_bot():
+    """Reinicia o bot e limpa os logs"""
+    global bot_process
+    try:
+        if not session.get('logged_in'):
+            return jsonify(error="Não autorizado"), 403
+        
+        log.info("🔄 Iniciando reinicialização do bot...")
+        
+        # 1. Para o bot se estiver rodando
+        if bot_process and bot_process.poll() is None:
+            log.info("⏹️ Parando bot atual...")
+            bot_process.terminate()
+            bot_process.wait(timeout=10)
+            bot_process = None
+            log.info("✅ Bot parado")
+        
+        # 2. Limpa os logs
+        log.info("🧹 Limpando logs...")
+        if log_manager.clear_log_file():
+            log.info("✅ Logs limpos")
+            # Emite evento para atualizar frontend
+            socketio.emit('log_cleared', {'message': 'Logs limpos - Bot reiniciando...'})
+        
+        # 3. Aguarda um momento
+        time.sleep(2)
+        
+        # 4. Rotaciona se necessário e adiciona separador
+        log_manager.rotate_log_if_needed()
+        log_manager.append_session_separator()
+        
+        # 5. Inicia o bot novamente
+        bot_process = subprocess.Popen(["python", "-u", "bot_worker.py"])
+        log.info(f"🚀 Bot reiniciado com PID: {bot_process.pid}")
+        
+        return jsonify(message="Bot reiniciado e logs limpos!", pid=bot_process.pid)
+        
+    except Exception as e:
+        log.error(f"❌ Erro ao reiniciar bot: {e}")
+        return jsonify(error=str(e)), 500
+
 # --- Thread de monitoramento de logs ---
 def monitor_log_file():
     """Thread para monitorar arquivo de log"""
@@ -288,9 +362,9 @@ def monitor_log_file():
             log.error(f"❌ Erro no monitoramento: {e}")
             time.sleep(2)
 
-# --- WebSocket Events (CORRIGIDOS) ---
+# --- WebSocket Events ---
 @socketio.on('connect')
-def handle_connect(auth=None):  # CORREÇÃO: Aceita parâmetro auth
+def handle_connect(auth=None):
     try:
         if not session.get('logged_in'):
             return False
