@@ -1,8 +1,9 @@
-# bot_worker.py - Versão Corrigida e Otimizada
+# bot_worker.py - Versão com Suporte a Ambos os Formatos de Setores
 import logging
 import time
 import random
 import httpx
+import re
 from bs4 import BeautifulSoup
 from config import (BASE_URL, JOGO_SLUG, DEPENDENTE_ID, TARGET_SECTOR_SLUG,
                     MAX_WATCH_ATTEMPTS, WATCH_INTERVAL_MIN, WATCH_INTERVAL_MAX,
@@ -18,18 +19,38 @@ logging.basicConfig(
 )
 log = logging.getLogger("bot-worker")
 
-def analyze_and_log_sectors(soup: BeautifulSoup) -> bool:
+def detect_sectors_page_type(soup: BeautifulSoup) -> str:
     """
-    Analisa setores de forma otimizada e mostra apenas informações relevantes.
+    Detecta o tipo de página de setores.
+    Retorna: 'svg_map', 'link_list', ou 'unknown'
+    """
+    # Verifica se existe mapa SVG com setores
+    svg_sectors = soup.find_all(class_="sector")
+    if svg_sectors:
+        log.info("  📊 Tipo de página detectado: MAPA SVG")
+        return "svg_map"
+    
+    # Verifica se existe lista de links para setores
+    sector_links = soup.find_all("a", href=re.compile(r"/setor/[^/]+/modo-de-compra/"))
+    if sector_links:
+        log.info("  📊 Tipo de página detectado: LISTA DE LINKS")
+        return "link_list"
+    
+    log.warning("  ⚠️ Tipo de página DESCONHECIDO - nenhum formato reconhecido")
+    return "unknown"
+
+def analyze_svg_sectors(soup: BeautifulSoup) -> bool:
+    """
+    Analisa setores no formato de mapa SVG (formato original).
     Retorna True se o setor alvo estiver disponível.
     """
     all_sector_elements = soup.find_all(class_="sector")
     
     if not all_sector_elements:
-        log.warning("⚠️ Nenhum setor encontrado na página!")
+        log.warning("⚠️ Nenhum setor SVG encontrado!")
         return False
     
-    log.info("  📊 [ANÁLISE DOS SETORES]")
+    log.info("  📊 [ANÁLISE DOS SETORES - MAPA SVG]")
     
     target_found_and_available = False
     available_sectors = []
@@ -55,7 +76,6 @@ def analyze_and_log_sectors(soup: BeautifulSoup) -> bool:
     
     # Mostra resumo dos outros setores
     if available_sectors:
-        # Mostra apenas os primeiros 5 para não poluir o log
         show_sectors = available_sectors[:5]
         log.info(f"  ✅ Outros setores disponíveis: {', '.join(show_sectors).upper()}")
         if len(available_sectors) > 5:
@@ -68,13 +88,213 @@ def analyze_and_log_sectors(soup: BeautifulSoup) -> bool:
     
     return target_found_and_available
 
+def analyze_link_sectors(soup: BeautifulSoup) -> bool:
+    """
+    Analisa setores no formato de lista de links.
+    Retorna True se o setor alvo estiver disponível.
+    """
+    # Procura por links que seguem o padrão /setor/NOME-SETOR/modo-de-compra/
+    sector_links = soup.find_all("a", href=re.compile(r"/setor/[^/]+/modo-de-compra/"))
+    
+    if not sector_links:
+        log.warning("⚠️ Nenhum link de setor encontrado!")
+        return False
+    
+    log.info("  📊 [ANÁLISE DOS SETORES - LISTA DE LINKS]")
+    
+    target_found_and_available = False
+    available_sectors = []
+    
+    # Analisa todos os links de setores
+    for link in sector_links:
+        href = link.get('href', '')
+        
+        # Extrai o slug do setor do link
+        # Exemplo: /jogos/corinthians-x-sao-jose-cpb25/setor/cadeira-vip/modo-de-compra/
+        # Padrão: /setor/([^/]+)/modo-de-compra/
+        match = re.search(r"/setor/([^/]+)/modo-de-compra/", href)
+        if not match:
+            continue
+            
+        sector_slug = match.group(1)
+        
+        # Tenta extrair o nome do setor do texto do link
+        sector_text = link.get_text(strip=True) if link.get_text(strip=True) else sector_slug.upper()
+        
+        if sector_slug == TARGET_SECTOR_SLUG:
+            # Setor alvo encontrado - se existe o link, está disponível
+            log.info(f"  🎯 Setor '{sector_slug.upper()}' ({sector_text}): ✅ DISPONÍVEL <--- ALVO ENCONTRADO!")
+            target_found_and_available = True
+        else:
+            # Outros setores disponíveis
+            available_sectors.append(f"{sector_slug} ({sector_text})")
+    
+    # Mostra resumo dos outros setores
+    if available_sectors:
+        show_sectors = available_sectors[:3]  # Reduzido para 3 porque os nomes são maiores
+        log.info(f"  ✅ Outros setores disponíveis: {', '.join(show_sectors)}")
+        if len(available_sectors) > 3:
+            log.info(f"  ➕ ... e mais {len(available_sectors) - 3} setores disponíveis")
+    
+    log.info(f"  📈 Total analisado: {len(sector_links)} setores")
+    
+    return target_found_and_available
+
+def analyze_and_log_sectors(soup: BeautifulSoup) -> bool:
+    """
+    Analisa setores de forma inteligente, detectando o tipo de página.
+    Retorna True se o setor alvo estiver disponível.
+    """
+    # Detecta o tipo de página
+    page_type = detect_sectors_page_type(soup)
+    
+    if page_type == "svg_map":
+        return analyze_svg_sectors(soup)
+    elif page_type == "link_list":
+        return analyze_link_sectors(soup)
+    else:
+        log.error("❌ Tipo de página não reconhecido - impossível analisar setores")
+        
+        # Debug: salva conteúdo para análise
+        debug_content = soup.get_text()[:500]
+        log.info(f"  🔍 Debug - Primeiros 500 chars: {debug_content}")
+        
+        # Verifica se tem algum indicador de setores
+        if "setor" in debug_content.lower():
+            log.info("  💡 A palavra 'setor' foi encontrada, mas formato não reconhecido")
+        
+        return False
+
+def get_target_sector_url() -> str:
+    """
+    Constrói a URL do setor alvo baseada no formato atual.
+    Mantém compatibilidade com ambos os formatos.
+    """
+    # URL padrão (formato antigo)
+    standard_url = f"{BASE_URL}/jogos/{JOGO_SLUG}/setor/{TARGET_SECTOR_SLUG}/"
+    
+    # URL com modo-de-compra (formato novo)
+    new_format_url = f"{BASE_URL}/jogos/{JOGO_SLUG}/setor/{TARGET_SECTOR_SLUG}/modo-de-compra/"
+    
+    # Por padrão, retorna o formato padrão
+    # A lógica do ataque tentará ambos se necessário
+    return standard_url
+
+def attempt_sector_attack(client: httpx.Client, soup: BeautifulSoup) -> bool:
+    """
+    Tenta atacar o setor alvo com estratégias múltiplas para ambos os formatos.
+    """
+    log.info("⚡ Iniciando sequência de ataque...")
+    
+    # Estratégia 1: URL padrão (formato SVG)
+    standard_url = f"{BASE_URL}/jogos/{JOGO_SLUG}/setor/{TARGET_SECTOR_SLUG}/"
+    
+    # Estratégia 2: URL com modo-de-compra (formato lista)
+    modo_compra_url = f"{BASE_URL}/jogos/{JOGO_SLUG}/setor/{TARGET_SECTOR_SLUG}/modo-de-compra/"
+    
+    # Estratégia 3: Procurar o link exato na página atual (para formato lista)
+    direct_link = None
+    sector_links = soup.find_all("a", href=re.compile(rf"/setor/{re.escape(TARGET_SECTOR_SLUG)}/modo-de-compra/"))
+    if sector_links:
+        direct_link = BASE_URL + sector_links[0].get('href')
+        log.info(f"  🔗 Link direto encontrado: {direct_link}")
+    
+    # Lista de URLs para tentar em ordem de prioridade
+    urls_to_try = []
+    
+    if direct_link:
+        urls_to_try.append(("Link Direto", direct_link))
+    
+    urls_to_try.extend([
+        ("Padrão", standard_url),
+        ("Modo Compra", modo_compra_url)
+    ])
+    
+    for strategy_name, target_url in urls_to_try:
+        try:
+            log.info(f"  🎯 Tentativa {strategy_name}: {target_url}")
+            
+            # 1. Acessa a página do setor
+            client.headers['Referer'] = SETORES_URL
+            sector_response = client.get(target_url)
+            
+            # Verifica se houve redirecionamento para login (sessão expirou)
+            if "/auth/login/" in str(sector_response.url):
+                log.error("❌ SESSÃO EXPIROU durante o ataque!")
+                return False
+            
+            # Verifica se a resposta é válida
+            if sector_response.status_code != 200:
+                log.warning(f"  ⚠️ {strategy_name} retornou status {sector_response.status_code}")
+                continue
+            
+            log.info(f"  ✅ {strategy_name}: Página acessada com sucesso")
+            
+            # 2. Analisa o conteúdo da página do setor
+            sector_soup = BeautifulSoup(sector_response.text, "html.parser")
+            
+            # Verifica se está realmente na página do setor correto
+            if TARGET_SECTOR_SLUG.upper() not in sector_response.text.upper():
+                log.warning(f"  ⚠️ {strategy_name}: Página não contém referência ao setor alvo")
+                continue
+            
+            # 3. Extrai CSRF token
+            csrf_element = sector_soup.find("input", {"name": "csrfmiddlewaretoken"})
+            if not csrf_element:
+                log.warning(f"  ⚠️ {strategy_name}: CSRF token não encontrado")
+                continue
+            
+            csrf_token = csrf_element.get("value")
+            log.info(f"  🔑 {strategy_name}: CSRF token extraído")
+
+            DEPENDENTES_ID = sector_soup.find("input", {"name": "dependentes"})
+            id_dep = DEPENDENTES_ID.get("value")
+            
+            # 4. Prepara payload para reserva
+            payload = {
+                "csrfmiddlewaretoken": csrf_token,
+                "dependentes": id_dep
+            }
+            
+            # 5. Executa reserva
+            client.headers['Referer'] = target_url
+            log.info(f"  🎯 {strategy_name}: Executando reserva...")
+            
+            post_response = client.post(target_url, data=payload)
+            
+            # 6. Verifica resultado
+            if post_response.history:
+                redirect_location = post_response.history[0].headers.get("location", "")
+                if "/ingressos/" in redirect_location:
+                    success_url = f"{BASE_URL}{redirect_location}"
+                    log.info(f"🎉 SUCESSO TOTAL! RESERVA CONFIRMADA via {strategy_name}!")
+                    log.info(f"🎫 URL da reserva: {success_url}")
+                    log.info("🏆 MISSÃO CUMPRIDA! Bot concluído com êxito.")
+                    return True
+                else:
+                    log.warning(f"  ⚠️ {strategy_name}: Redirecionamento inesperado: {redirect_location}")
+            
+            # Verifica se está na página de ingressos
+            if "/ingressos/" in post_response.url.path:
+                log.info(f"🎉 SUCESSO! Reserva confirmada via {strategy_name}!")
+                log.info(f"🎫 URL final: {post_response.url}")
+                return True
+            
+            log.warning(f"  ❌ {strategy_name}: Tentativa falhou")
+            
+        except Exception as attack_error:
+            log.error(f"  💥 Erro na tentativa {strategy_name}: {attack_error}")
+            continue
+    
+    log.error("❌ TODAS AS ESTRATÉGIAS DE ATAQUE FALHARAM!")
+    return False
+
 def watch_and_attack(session_cookies: dict) -> bool:
     """
-    Vigilância otimizada do setor alvo com melhor handling de erros.
+    Vigilância otimizada do setor alvo com suporte a múltiplos formatos.
     """
     log.info("▶️ FASE 2: Iniciando Vigilância Otimizada do Setor")
     log.info(f"🎯 Alvo: {TARGET_SECTOR_SLUG.upper()}")
-    target_sector_url = f"{BASE_URL}/jogos/{JOGO_SLUG}/setor/{TARGET_SECTOR_SLUG}/"
 
     with httpx.Client(
         cookies=session_cookies, 
@@ -106,63 +326,13 @@ def watch_and_attack(session_cookies: dict) -> bool:
                 # === ATAQUE SE DISPONÍVEL ===
                 if target_available:
                     log.info(f"🚨 OPORTUNIDADE DETECTADA! Setor '{TARGET_SECTOR_SLUG.upper()}' disponível!")
-                    log.info("⚡ Iniciando sequência de ataque...")
                     
-                    try:
-                        # 1. Acessa a página do setor
-                        client.headers['Referer'] = SETORES_URL
-                        sector_response = client.get(target_sector_url)
-                        sector_response.raise_for_status()
-                        
-                        log.info("✅ Página do setor acessada")
-                        
-                        # 2. Extrai CSRF token
-                        sector_soup = BeautifulSoup(sector_response.text, "html.parser")
-                        csrf_element = sector_soup.find("input", {"name": "csrfmiddlewaretoken"})
-                        DEPENDENTE_ID = sector_soup.find("input", {"name": "dependentes"})
-                        
-                        if not csrf_element:
-                            log.error("❌ CSRF token não encontrado!")
-                            return True  # Encerra para evitar spam
-                        
-                        csrf_token = csrf_element.get("value")
-                        log.info("🔑 CSRF token extraído")
-                        
-                        # 3. Prepara payload para reserva
-                        payload = {
-                            "csrfmiddlewaretoken": csrf_token,
-                            "dependentes": DEPENDENTE_ID
-                        }
-                        
-                        # 4. Executa reserva
-                        client.headers['Referer'] = target_sector_url
-                        log.info("🎯 Executando reserva...")
-                        
-                        post_response = client.post(target_sector_url, data=payload)
-                        
-                        # 5. Verifica resultado
-                        if post_response.history:
-                            redirect_location = post_response.history[0].headers.get("location", "")
-                            if "/ingressos/" in redirect_location:
-                                success_url = f"{BASE_URL}{redirect_location}"
-                                log.info(f"🎉 SUCESSO TOTAL! RESERVA CONFIRMADA!")
-                                log.info(f"🎫 URL da reserva: {success_url}")
-                                log.info("🏆 MISSÃO CUMPRIDA! Bot concluído com êxito.")
-                                return True
-                            else:
-                                log.warning(f"⚠️ Redirecionamento inesperado: {redirect_location}")
-                        
-                        # Verifica se está na página de ingressos
-                        if "/ingressos/" in post_response.url.path:
-                            log.info(f"🎉 SUCESSO! Página de ingressos alcançada!")
-                            log.info(f"🎫 URL final: {post_response.url}")
-                            return True
-                        
+                    attack_success = attempt_sector_attack(client, soup)
+                    
+                    if attack_success:
+                        return True
+                    else:
                         log.error("❌ ATAQUE FALHOU! Oportunidade não convertida.")
-                        log.warning("🔄 Continuando vigilância...")
-                        
-                    except Exception as attack_error:
-                        log.error(f"💥 Erro durante ataque: {attack_error}")
                         log.warning("🔄 Continuando vigilância...")
                 
                 else:
