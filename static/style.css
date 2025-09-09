@@ -1,4 +1,4 @@
-/* static/style.css - Versão Básica Funcional */
+/* static/style.css - Versão Completa com Novos Botões */
 body { 
     font-family: Arial, sans-serif; 
     background-color: #f5f5f5; 
@@ -65,6 +65,7 @@ input[type="text"], input[type="password"] {
     border: 1px solid #ddd; 
 }
 
+/* === BOTÕES PRINCIPAIS === */
 button { 
     background-color: #007bff; 
     color: white; 
@@ -73,16 +74,82 @@ button {
     border-radius: 4px; 
     cursor: pointer; 
     margin: 5px; 
+    font-size: 14px;
+    transition: background-color 0.3s ease;
 }
 
 button:hover { 
     background-color: #0056b3; 
 }
 
-.btn-start { background-color: #28a745; }
-.btn-stop { background-color: #dc3545; }
-.btn-download { background-color: #ffc107; color: #000; }
+button:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+}
 
+/* === BOTÕES ESPECÍFICOS === */
+.btn-start { 
+    background-color: #28a745; 
+}
+.btn-start:hover { 
+    background-color: #218838; 
+}
+
+.btn-stop { 
+    background-color: #dc3545; 
+}
+.btn-stop:hover { 
+    background-color: #c82333; 
+}
+
+.btn-restart { 
+    background-color: #fd7e14; 
+}
+.btn-restart:hover { 
+    background-color: #e96500; 
+}
+
+.btn-clear { 
+    background-color: #6f42c1; 
+}
+.btn-clear:hover { 
+    background-color: #5a32a3; 
+}
+
+.btn-download { 
+    background-color: #ffc107; 
+    color: #000; 
+}
+.btn-download:hover { 
+    background-color: #e0a800; 
+}
+
+.btn-refresh { 
+    background-color: #17a2b8; 
+}
+.btn-refresh:hover { 
+    background-color: #138496; 
+}
+
+/* === ÁREA DE CONTROLE === */
+.control-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 20px;
+    padding: 10px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+.control-buttons button {
+    margin: 0;
+    flex: 1;
+    min-width: 120px;
+}
+
+/* === ÁREA DE LOGS === */
 #log-output { 
     background: #1e1e1e; 
     color: #d4d4d4; 
@@ -92,35 +159,166 @@ button:hover {
     border-radius: 4px; 
     white-space: pre-wrap; 
     word-wrap: break-word; 
-    font-family: monospace;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
     border: 1px solid #333;
     margin-top: 10px;
 }
 
-.info-panel {
-    background: #f8f9fa;
-    padding: 10px;
-    border-radius: 4px;
-    margin-top: 10px;
+/* Scrollbar customizada para logs */
+#log-output::-webkit-scrollbar {
+    width: 8px;
 }
 
+#log-output::-webkit-scrollbar-track {
+    background: #2d2d2d;
+}
+
+#log-output::-webkit-scrollbar-thumb {
+    background: #555;
+    border-radius: 4px;
+}
+
+#log-output::-webkit-scrollbar-thumb:hover {
+    background: #777;
+}
+
+/* === PAINEL DE INFORMAÇÕES === */
+.info-panel {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 4px;
+    margin-top: 15px;
+    border-left: 4px solid #007bff;
+}
+
+.info-panel h3 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    color: #495057;
+}
+
+.info-panel p {
+    margin: 5px 0;
+    font-size: 14px;
+}
+
+/* === STATUS INDICATORS === */
+#status-indicator {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: bold;
+    margin-right: 10px;
+}
+
+#bot-status {
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+}
+
+/* === LOGIN === */
 .login-container { 
-    width: 300px; 
+    width: 350px; 
     margin: 100px auto; 
-    padding: 20px; 
+    padding: 30px; 
     background: white; 
     border-radius: 8px; 
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1); 
     text-align: center; 
 }
 
-/* Responsive */
+.login-container h2 {
+    margin-bottom: 20px;
+    color: #333;
+}
+
+.login-container input {
+    width: 90%;
+    margin: 10px 0;
+    padding: 12px;
+    font-size: 14px;
+}
+
+.login-container button {
+    width: 100%;
+    margin-top: 15px;
+    padding: 12px;
+    font-size: 16px;
+}
+
+/* === RESPONSIVE === */
 @media (max-width: 768px) {
     .main-content {
         flex-direction: column;
     }
     
+    .control-buttons {
+        flex-direction: column;
+    }
+    
+    .control-buttons button {
+        flex: none;
+        width: 100%;
+        margin: 2px 0;
+    }
+    
     #log-output {
         height: 300px;
+        font-size: 11px;
     }
+    
+    .container {
+        padding: 10px;
+    }
+}
+
+/* === ANIMAÇÕES === */
+@keyframes pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+.loading {
+    animation: pulse 1.5s infinite;
+}
+
+/* === ESTADOS VISUAIS === */
+.success {
+    background-color: #d4edda !important;
+    color: #155724 !important;
+    border: 1px solid #c3e6cb !important;
+}
+
+.error {
+    background-color: #f8d7da !important;
+    color: #721c24 !important;
+    border: 1px solid #f5c6cb !important;
+}
+
+.warning {
+    background-color: #fff3cd !important;
+    color: #856404 !important;
+    border: 1px solid #ffeaa7 !important;
+}
+
+/* === MELHORIAS DE ACESSIBILIDADE === */
+button:focus {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
+}
+
+input:focus {
+    outline: 2px solid #007bff;
+    outline-offset: 1px;
+}
+
+/* === LOG INFO === */
+#log-info {
+    font-style: italic;
+    color: #6c757d;
 }
